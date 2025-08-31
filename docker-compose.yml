@@ -1,0 +1,342 @@
+# Электронный журнал производства работ на объектах благоустройства
+# Промышленное решение для государственных контролирующих органов
+
+version: '3.8'
+
+services:
+  # PostgreSQL база данных с PostGIS
+  postgres:
+    image: postgis/postgis:15-3.3-alpine
+    container_name: ej_postgres
+    environment:
+      POSTGRES_DB: electronic_journal
+      POSTGRES_USER: ej_user
+      POSTGRES_PASSWORD: ej_password_2024
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=ru_RU.UTF-8 --lc-ctype=ru_RU.UTF-8"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init:/docker-entrypoint-initdb.d
+    ports:
+      - "5432:5432"
+    networks:
+      - ej_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ej_user -d electronic_journal"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis для кеширования и очередей
+  redis:
+    image: redis:7-alpine
+    container_name: ej_redis
+    command: redis-server --appendonly yes --requirepass redis_password_2024
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - ej_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Основной Django сервис
+  core_service:
+    build:
+      context: ./backend/core_service
+      dockerfile: Dockerfile
+    container_name: ej_core_service
+    environment:
+      - DEBUG=0
+      - DATABASE_URL=postgresql://ej_user:ej_password_2024@postgres:5432/electronic_journal
+      - REDIS_URL=redis://:redis_password_2024@redis:6379/0
+      - CELERY_BROKER_URL=redis://:redis_password_2024@redis:6379/1
+      - SECRET_KEY=${SECRET_KEY:-your-super-secret-key-here}
+      - ALLOWED_HOSTS=localhost,127.0.0.1,core_service
+      - CORS_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+    volumes:
+      - media_files:/app/media
+      - static_files:/app/static
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - ej_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Файловый сервис
+  file_service:
+    build:
+      context: ./backend/file_service
+      dockerfile: Dockerfile
+    container_name: ej_file_service
+    environment:
+      - CORE_SERVICE_URL=http://core_service:8000
+      - MAX_FILE_SIZE=104857600  # 100MB
+      - ALLOWED_EXTENSIONS=pdf,doc,docx,xls,xlsx,jpg,jpeg,png,gif,bmp,txt,csv
+    volumes:
+      - file_storage:/app/files
+    ports:
+      - "8001:8001"
+    depends_on:
+      - core_service
+    networks:
+      - ej_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # GIS сервис
+  gis_service:
+    build:
+      context: ./backend/gis_service
+      dockerfile: Dockerfile
+    container_name: ej_gis_service
+    environment:
+      - CORE_SERVICE_URL=http://core_service:8000
+      - NOMINATIM_URL=https://nominatim.openstreetmap.org
+    volumes:
+      - gis_data:/app/gis_data
+    ports:
+      - "8002:8002"
+    depends_on:
+      - core_service
+    networks:
+      - ej_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Celery Worker
+  celery_worker:
+    build:
+      context: ./backend/core_service
+      dockerfile: Dockerfile
+    container_name: ej_celery_worker
+    command: celery -A config worker -l info --concurrency=4
+    environment:
+      - DEBUG=0
+      - DATABASE_URL=postgresql://ej_user:ej_password_2024@postgres:5432/electronic_journal
+      - REDIS_URL=redis://:redis_password_2024@redis:6379/0
+      - CELERY_BROKER_URL=redis://:redis_password_2024@redis:6379/1
+      - SECRET_KEY=${SECRET_KEY:-your-super-secret-key-here}
+    volumes:
+      - media_files:/app/media
+      - static_files:/app/static
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - ej_network
+    restart: unless-stopped
+
+  # Celery Beat (планировщик задач)
+  celery_beat:
+    build:
+      context: ./backend/core_service
+      dockerfile: Dockerfile
+    container_name: ej_celery_beat
+    command: celery -A config beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    environment:
+      - DEBUG=0
+      - DATABASE_URL=postgresql://ej_user:ej_password_2024@postgres:5432/electronic_journal
+      - REDIS_URL=redis://:redis_password_2024@redis:6379/0
+      - CELERY_BROKER_URL=redis://:redis_password_2024@redis:6379/1
+      - SECRET_KEY=${SECRET_KEY:-your-super-secret-key-here}
+    volumes:
+      - media_files:/app/media
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - ej_network
+    restart: unless-stopped
+
+  # Nginx - веб-сервер и балансировщик нагрузки
+  nginx:
+    image: nginx:alpine
+    container_name: ej_nginx
+    volumes:
+      - ./infrastructure/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./infrastructure/nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./frontend:/usr/share/nginx/html:ro
+      - static_files:/usr/share/nginx/html/static:ro
+      - media_files:/usr/share/nginx/html/media:ro
+      - ./infrastructure/ssl:/etc/nginx/ssl:ro
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - core_service
+      - file_service
+      - gis_service
+    networks:
+      - ej_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Prometheus для мониторинга
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: ej_prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./infrastructure/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - ej_network
+    restart: unless-stopped
+
+  # Grafana для визуализации метрик
+  grafana:
+    image: grafana/grafana:latest
+    container_name: ej_grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=grafana_admin_2024
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./infrastructure/grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - ej_network
+    restart: unless-stopped
+
+  # Elasticsearch для логирования
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: ej_elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+    networks:
+      - ej_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Logstash для обработки логов
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.11.0
+    container_name: ej_logstash
+    volumes:
+      - ./infrastructure/logstash/logstash.conf:/usr/share/logstash/pipeline/logstash.conf:ro
+      - ./infrastructure/logstash/patterns:/usr/share/logstash/patterns:ro
+    ports:
+      - "5044:5044"
+      - "5000:5000/tcp"
+      - "5000:5000/udp"
+      - "9600:9600"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - ej_network
+    restart: unless-stopped
+
+  # Kibana для анализа логов
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.11.0
+    container_name: ej_kibana
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    ports:
+      - "5601:5601"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - ej_network
+    restart: unless-stopped
+
+  # Filebeat для сбора логов
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.11.0
+    container_name: ej_filebeat
+    user: root
+    volumes:
+      - ./infrastructure/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - logstash
+    networks:
+      - ej_network
+    restart: unless-stopped
+
+# Volumes для хранения данных
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  media_files:
+    driver: local
+  static_files:
+    driver: local
+  file_storage:
+    driver: local
+  gis_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+  elasticsearch_data:
+    driver: local
+
+# Сети
+networks:
+  ej_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

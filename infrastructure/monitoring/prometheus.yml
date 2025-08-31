@@ -1,0 +1,299 @@
+# Prometheus конфигурация для мониторинга
+# Электронный журнал производства работ - Промышленное решение
+
+# Глобальные настройки
+global:
+  scrape_interval: 15s      # Интервал сбора метрик по умолчанию
+  evaluation_interval: 15s  # Интервал оценки правил
+  scrape_timeout: 10s       # Таймаут для scrape
+  
+  # Внешние лейблы для всех метрик
+  external_labels:
+    monitor: 'electronic-journal-monitor'
+    environment: 'production'
+    cluster: 'main'
+
+# Конфигурация правил алертов
+rule_files:
+  - "rules/*.yml"
+
+# Конфигурация Alertmanager
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093
+      timeout: 10s
+      api_version: v2
+
+# Конфигурация сбора метрик
+scrape_configs:
+  # Мониторинг самого Prometheus
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+    metrics_path: /metrics
+    scrape_interval: 15s
+    scrape_timeout: 10s
+
+  # Мониторинг основного Django сервиса
+  - job_name: 'core-service'
+    static_configs:
+      - targets: ['core_service:8000']
+    metrics_path: /metrics
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    scheme: http
+    
+    # Дополнительные лейблы
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: core_service:8000
+    
+    # Метрики для Django
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: 'django_.*'
+        target_label: service
+        replacement: 'core-service'
+
+  # Мониторинг файлового сервиса
+  - job_name: 'file-service'
+    static_configs:
+      - targets: ['file_service:8001']
+    metrics_path: /metrics
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    scheme: http
+    
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+      - target_label: service
+        replacement: 'file-service'
+
+  # Мониторинг GIS сервиса  
+  - job_name: 'gis-service'
+    static_configs:
+      - targets: ['gis_service:8002']
+    metrics_path: /metrics
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    scheme: http
+    
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+      - target_label: service
+        replacement: 'gis-service'
+
+  # Мониторинг PostgreSQL
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres_exporter:9187']
+    metrics_path: /metrics
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+      - target_label: service
+        replacement: 'postgresql'
+
+  # Мониторинг Redis
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis_exporter:9121']
+    metrics_path: /metrics
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+      - target_label: service
+        replacement: 'redis'
+
+  # Мониторинг Nginx
+  - job_name: 'nginx'
+    static_configs:
+      - targets: ['nginx_exporter:9113']
+    metrics_path: /metrics
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+      - target_label: service
+        replacement: 'nginx'
+
+  # Мониторинг системных метрик (Node Exporter)
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node_exporter:9100']
+    metrics_path: /metrics
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+      - target_label: service
+        replacement: 'system'
+
+  # Мониторинг Docker контейнеров
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']
+    metrics_path: /metrics
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+      - target_label: service
+        replacement: 'docker'
+
+  # Мониторинг Elasticsearch (если используется)
+  - job_name: 'elasticsearch'
+    static_configs:
+      - targets: ['elasticsearch_exporter:9114']
+    metrics_path: /metrics
+    scrape_interval: 60s
+    scrape_timeout: 15s
+    
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+      - target_label: service
+        replacement: 'elasticsearch'
+
+  # Мониторинг Celery задач
+  - job_name: 'celery'
+    static_configs:
+      - targets: ['core_service:8000']
+    metrics_path: /metrics/celery
+    scrape_interval: 60s
+    scrape_timeout: 15s
+    
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+      - target_label: service
+        replacement: 'celery'
+
+  # Мониторинг пользовательских метрик приложения
+  - job_name: 'application-metrics'
+    static_configs:
+      - targets: ['core_service:8000']
+    metrics_path: /metrics/app
+    scrape_interval: 60s
+    scrape_timeout: 15s
+    
+    # Фильтрация метрик
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: 'journal_.*|project_.*|document_.*|user_.*'
+        target_label: category
+        replacement: 'business'
+      - source_labels: [__name__]
+        regex: 'http_.*|db_.*|cache_.*'
+        target_label: category
+        replacement: 'technical'
+
+  # Мониторинг API производительности
+  - job_name: 'api-performance'
+    static_configs:
+      - targets: ['core_service:8000', 'file_service:8001', 'gis_service:8002']
+    metrics_path: /metrics/api
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    
+    relabel_configs:
+      - source_labels: [__address__]
+        regex: 'core_service:8000'
+        target_label: service
+        replacement: 'core-api'
+      - source_labels: [__address__]
+        regex: 'file_service:8001'
+        target_label: service
+        replacement: 'file-api'
+      - source_labels: [__address__]
+        regex: 'gis_service:8002'
+        target_label: service
+        replacement: 'gis-api'
+
+  # Blackbox мониторинг (проверка доступности)
+  - job_name: 'blackbox-http'
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+        - http://nginx/health
+        - http://core_service:8000/health
+        - http://file_service:8001/health
+        - http://gis_service:8002/health
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox_exporter:9115
+
+  # Мониторинг SSL сертификатов (для продакшена)
+  - job_name: 'blackbox-ssl'
+    metrics_path: /probe
+    params:
+      module: [ssl_expire]
+    static_configs:
+      - targets:
+        - https://electronic-journal.local
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox_exporter:9115
+
+# Конфигурация удаленного хранения (опционально)
+remote_write:
+  - url: "http://victoria-metrics:8428/api/v1/write"
+    queue_config:
+      max_samples_per_send: 10000
+      max_shards: 30
+      capacity: 20000
+
+# Конфигурация удаленного чтения (опционально)  
+remote_read:
+  - url: "http://victoria-metrics:8428/api/v1/read"
+    read_recent: true
+
+# Конфигурация хранения данных
+storage:
+  tsdb:
+    retention.time: 30d
+    retention.size: 10GB
+    wal-compression: true
+
+# Конфигурация веб-интерфейса
+web:
+  console.libraries: /etc/prometheus/console_libraries
+  console.templates: /etc/prometheus/consoles
+  enable-lifecycle: true
+  enable-admin-api: true
+  page-title: "Electronic Journal Monitoring"
+  
+# Настройки логирования
+log:
+  level: info
+  format: json

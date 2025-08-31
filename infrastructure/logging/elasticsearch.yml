@@ -1,0 +1,156 @@
+# Elasticsearch конфигурация для логирования
+# Электронный журнал производства работ - Промышленное решение
+
+# Конфигурация кластера
+cluster.name: electronic-journal-logs
+node.name: es-node-1
+node.roles: [ master, data, ingest ]
+
+# Сетевые настройки
+network.host: 0.0.0.0
+http.port: 9200
+transport.port: 9300
+
+# Настройки пути
+path.data: /usr/share/elasticsearch/data
+path.logs: /usr/share/elasticsearch/logs
+path.repo: /usr/share/elasticsearch/backup
+
+# Настройки памяти и производительности
+bootstrap.memory_lock: true
+indices.memory.index_buffer_size: 10%
+indices.memory.min_index_buffer_size: 48mb
+
+# Настройки обнаружения
+discovery.type: single-node
+discovery.seed_hosts: []
+cluster.initial_master_nodes: ["es-node-1"]
+
+# Настройки безопасности (базовые)
+xpack.security.enabled: false
+xpack.monitoring.collection.enabled: true
+xpack.ml.enabled: false
+xpack.watcher.enabled: false
+
+# HTTP настройки
+http.cors.enabled: true
+http.cors.allow-origin: "*"
+http.cors.allow-headers: "Authorization, X-Requested-With, Content-Type, Content-Length"
+http.max_content_length: 100mb
+
+# Настройки индексов
+action.auto_create_index: true
+action.destructive_requires_name: true
+
+# Шаблоны индексов для логов приложения
+index.number_of_shards: 1
+index.number_of_replicas: 0
+index.refresh_interval: 5s
+
+# Настройки ротации логов
+indices.lifecycle.poll_interval: 10m
+
+# Настройки для разработки (отключаем в продакшене)
+cluster.routing.allocation.disk.threshold_enabled: false
+
+# JVM настройки для контейнера
+#-Xms512m
+#-Xmx512m
+
+# Логирование Elasticsearch
+logger.level: INFO
+logger.org.elasticsearch.transport: WARN
+logger.org.elasticsearch.discovery: WARN
+logger.org.elasticsearch.cluster.service: WARN
+
+# Настройки мониторинга
+xpack.monitoring.enabled: true
+xpack.monitoring.collection.cluster.stats.timeout: 30s
+xpack.monitoring.collection.node.stats.timeout: 30s
+xpack.monitoring.collection.indices: ["*"]
+
+# Настройки для ILM (Index Lifecycle Management)
+indices.lifecycle.rollover.only_if_has_documents: true
+
+# Настройки кеширования
+indices.queries.cache.size: 10%
+indices.fielddata.cache.size: 20%
+indices.requests.cache.size: 2%
+
+# Настройки восстановления
+gateway.recover_after_nodes: 1
+gateway.expected_nodes: 1
+gateway.recover_after_time: 5m
+
+# Настройки threadspool
+thread_pool.write.queue_size: 1000
+thread_pool.search.queue_size: 1000
+thread_pool.get.queue_size: 1000
+
+# Настройки circuit breaker
+indices.breaker.total.limit: 70%
+indices.breaker.request.limit: 40%
+indices.breaker.fielddata.limit: 40%
+
+# Настройки для работы с большими документами
+http.max_header_size: 16kb
+http.max_initial_line_length: 8kb
+
+# Отключаем swapping
+bootstrap.memory_lock: true
+
+# Настройки для журналирования производства работ
+# Специальные шаблоны индексов
+index.mapping.total_fields.limit: 2000
+index.mapping.depth.limit: 20
+index.mapping.nested_fields.limit: 100
+
+# Настройки для геоданных (важно для журнала работ)
+index.mapping.geo_point.limit: 50
+index.mapping.geo_shape.limit: 50
+
+# Автоматическое создание индексов по шаблонам
+action.auto_create_index: +journal-*,+projects-*,+documents-*,+audit-*,+system-*,-*
+
+# Компрессия индексов
+index.codec: best_compression
+
+# Настройки для аналитики и отчетности
+indices.query.bool.max_clause_count: 2048
+
+# Настройки темповых файлов
+path.shared_data: /usr/share/elasticsearch/data/shared
+
+# Настройки для резервного копирования
+repositories.fs.compress: true
+
+# Настройки для системных логов
+cluster.max_shards_per_node: 3000
+
+# Специальные настройки для промышленного решения
+# Длительное хранение критических логов
+index.blocks.write: false
+index.blocks.read: false
+index.blocks.metadata: false
+
+# Настройки для высокой доступности в продакшене (закомментированы для разработки)
+# gateway.expected_data_nodes: 3
+# gateway.expected_master_nodes: 2
+# discovery.zen.minimum_master_nodes: 2
+
+# Настройки производительности для больших объемов данных
+bulk.queue_size: 1000
+search.max_buckets: 100000
+
+# Настройки для логирования промышленных процессов
+index.translog.durability: async
+index.translog.sync_interval: 30s
+index.translog.flush_threshold_size: 1gb
+
+# Отключение медленных операций в продакшене
+indices.recovery.max_bytes_per_sec: 200mb
+cluster.routing.allocation.cluster_concurrent_rebalance: 4
+cluster.routing.allocation.node_concurrent_recoveries: 4
+
+# Настройки алертов для критических событий
+watcher.trigger.schedule.interval: 1s

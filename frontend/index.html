@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Электронный журнал производства работ на объектах благоустройства">
+    <meta name="keywords" content="журнал работ, строительство, контроль качества, геолокация">
+    
+    <title>Электронный журнал производства работ</title>
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="assets/images/favicon.png">
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#0d6efd">
+    
+    <!-- CSS -->
+    <link href="css/vendor/bootstrap.min.css" rel="stylesheet">
+    <link href="css/vendor/fontawesome.min.css" rel="stylesheet">
+    <link href="css/vendor/leaflet.css" rel="stylesheet">
+    <link href="css/main.css" rel="stylesheet">
+    
+    <!-- Preload critical resources -->
+    <link rel="preload" href="js/main.js" as="script">
+    <link rel="preload" href="js/api/base.js" as="script">
+</head>
+<body>
+    <!-- Loading Screen -->
+    <div id="loading-screen" class="loading-screen">
+        <div class="loading-spinner">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Загрузка...</span>
+            </div>
+            <p class="mt-3">Загрузка системы...</p>
+        </div>
+    </div>
+
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary fixed-top" id="main-navbar">
+        <div class="container-fluid">
+            <!-- Brand -->
+            <a class="navbar-brand" href="#" onclick="navigateTo('dashboard')">
+                <img src="assets/images/logo.png" alt="Логотип" width="32" height="32" class="d-inline-block align-text-top me-2">
+                Электронный журнал
+            </a>
+            
+            <!-- Mobile toggle -->
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarContent">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            
+            <!-- Navigation content -->
+            <div class="collapse navbar-collapse" id="navbarContent">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" onclick="navigateTo('dashboard')" data-page="dashboard">
+                            <i class="fas fa-tachometer-alt me-1"></i>
+                            Дашборд
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" onclick="navigateTo('journal')" data-page="journal">
+                            <i class="fas fa-book me-1"></i>
+                            Журнал работ
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" onclick="navigateTo('projects')" data-page="projects">
+                            <i class="fas fa-building me-1"></i>
+                            Проекты
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" onclick="navigateTo('documents')" data-page="documents">
+                            <i class="fas fa-file-alt me-1"></i>
+                            Документы
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" onclick="navigateTo('reports')" data-page="reports">
+                            <i class="fas fa-chart-bar me-1"></i>
+                            Отчеты
+                        </a>
+                    </li>
+                </ul>
+                
+                <!-- User menu -->
+                <ul class="navbar-nav">
+                    <!-- Notifications -->
+                    <li class="nav-item dropdown">
+                        <a class="nav-link position-relative" href="#" role="button" data-bs-toggle="dropdown" id="notifications-toggle">
+                            <i class="fas fa-bell"></i>
+                            <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" id="notification-count" style="display: none;">
+                                0
+                            </span>
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end" id="notifications-dropdown">
+                            <li><h6 class="dropdown-header">Уведомления</h6></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li id="notifications-content">
+                                <span class="dropdown-item-text text-muted">Нет новых уведомлений</span>
+                            </li>
+                        </ul>
+                    </li>
+                    
+                    <!-- User menu -->
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" id="user-menu">
+                            <img src="assets/images/default-avatar.png" alt="Аватар" width="24" height="24" class="rounded-circle me-1" id="user-avatar">
+                            <span id="user-name">Пользователь</span>
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><a class="dropdown-item" href="#" onclick="navigateTo('profile')">
+                                <i class="fas fa-user me-2"></i>Профиль
+                            </a></li>
+                            <li><a class="dropdown-item" href="#" onclick="showSettings()">
+                                <i class="fas fa-cog me-2"></i>Настройки
+                            </a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="#" onclick="logout()">
+                                <i class="fas fa-sign-out-alt me-2"></i>Выход
+                            </a></li>
+                        </ul>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content" id="main-content">
+        <!-- Content will be loaded dynamically -->
+        <div class="container-fluid py-4">
+            <div id="page-content">
+                <!-- Page content will be loaded here -->
+            </div>
+        </div>
+    </main>
+
+    <!-- Sidebar (for mobile and additional navigation) -->
+    <div class="offcanvas offcanvas-start" tabindex="-1" id="sidebar">
+        <div class="offcanvas-header">
+            <h5 class="offcanvas-title">Навигация</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
+        </div>
+        <div class="offcanvas-body">
+            <!-- Additional navigation items -->
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container position-fixed bottom-0 end-0 p-3" id="toast-container">
+        <!-- Toasts will be added here dynamically -->
+    </div>
+
+    <!-- Global Modals -->
+    
+    <!-- Location Permission Modal -->
+    <div class="modal fade" id="locationModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Доступ к местоположению</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Для работы с системой необходимо разрешить доступ к вашему местоположению. Это требуется для:</p>
+                    <ul>
+                        <li>Проверки присутствия на объекте</li>
+                        <li>Привязки записей к координатам</li>
+                        <li>Контроля качества работ</li>
+                    </ul>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отменить</button>
+                    <button type="button" class="btn btn-primary" onclick="requestLocationPermission()">Разрешить доступ</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Error Modal -->
+    <div class="modal fade" id="errorModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Ошибка</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="error-modal-body">
+                    <!-- Error message will be displayed here -->
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal">OK</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirm Modal -->
+    <div class="modal fade" id="confirmModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="confirm-modal-title">Подтверждение</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="confirm-modal-body">
+                    <!-- Confirmation message will be displayed here -->
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="button" class="btn btn-primary" id="confirm-modal-ok">Подтвердить</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript Libraries -->
+    <script src="js/vendor/bootstrap.bundle.min.js"></script>
+    <script src="js/vendor/axios.min.js"></script>
+    <script src="js/vendor/chart.min.js"></script>
+    <script src="js/vendor/leaflet.js"></script>
+    <script src="js/vendor/socket.io.min.js"></script>
+    
+    <!-- Application JavaScript -->
+    <script src="js/config.js"></script>
+    <script src="js/utils/helpers.js"></script>
+    <script src="js/utils/validation.js"></script>
+    <script src="js/utils/formatting.js"></script>
+    <script src="js/utils/constants.js"></script>
+    
+    <!-- API Clients -->
+    <script src="js/api/base.js"></script>
+    <script src="js/api/auth.js"></script>
+    <script src="js/api/journal.js"></script>
+    <script src="js/api/files.js"></script>
+    <script src="js/api/gis.js"></script>
+    
+    <!-- Components -->
+    <script src="js/components/header.js"></script>
+    <script src="js/components/sidebar.js"></script>
+    <script src="js/components/modal.js"></script>
+    <script src="js/components/datatable.js"></script>
+    <script src="js/components/map.js"></script>
+    <script src="js/components/file-upload.js"></script>
+    
+    <!-- Pages -->
+    <script src="js/pages/dashboard.js"></script>
+    <script src="js/pages/journal.js"></script>
+    <script src="js/pages/projects.js"></script>
+    <script src="js/pages/reports.js"></script>
+    <script src="js/pages/profile.js"></script>
+    
+    <!-- Main Application -->
+    <script src="js/main.js"></script>
+    
+    <!-- Service Worker Registration -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function() {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(function(registration) {
+                        console.log('ServiceWorker registration successful');
+                    })
+                    .catch(function(err) {
+                        console.log('ServiceWorker registration failed: ', err);
+                    });
+            });
+        }
+    </script>
+</body>
+</html>
